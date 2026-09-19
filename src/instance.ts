@@ -8,7 +8,20 @@ import {
 	ModuleLogger,
 	createModuleLogger,
 } from '@companion-surface/base'
-import { LoupedeckBufferFormat, LoupedeckDevice, LoupedeckDisplayId, RGBColor } from '@loupedeck/node'
+import {
+	LoupedeckBufferFormat,
+	LoupedeckDevice,
+	LoupedeckDisplayId,
+	LoupedeckVibratePattern,
+	RGBColor,
+} from '@loupedeck/node'
+import {
+	DefaultHapticFeedbackIntensity,
+	HapticFeedbackConfigId,
+	HapticFeedbackIntensityConfigId,
+	HapticFeedbackIntensityDelays,
+	type HapticFeedbackIntensity,
+} from './config-fields.js'
 import {
 	getStripCellControlId,
 	parseStripCellControlId,
@@ -40,6 +53,13 @@ export class LoupedeckWrapper implements SurfaceInstance {
 	readonly #surfaceId: string
 	readonly #useTouchStrips: boolean
 	readonly #supportsSplitButtons: boolean
+	readonly #supportsHapticFeedback: boolean
+	#hapticFeedbackEnabled = true
+	#hapticFeedbackIntensity: HapticFeedbackIntensity = DefaultHapticFeedbackIntensity
+	#hapticFeedbackReady = false
+	#hapticFeedbackInFlight = false
+	#hapticFeedbackBusyLogged = false
+	#isClosed = false
 
 	/** Configured strip mode. Only meaningful when #supportsSplitButtons is true */
 	#configStripMode: 'buttons' | 'slider' = 'buttons'
@@ -85,6 +105,7 @@ export class LoupedeckWrapper implements SurfaceInstance {
 		context: SurfaceContext,
 		useTouchStrips: boolean,
 		supportsSplitButtons: boolean,
+		supportsHapticFeedback: boolean,
 	) {
 		this.#logger = createModuleLogger(`Instance/${surfaceId}`)
 
@@ -92,8 +113,13 @@ export class LoupedeckWrapper implements SurfaceInstance {
 		this.#surfaceId = surfaceId
 		this.#useTouchStrips = useTouchStrips
 		this.#supportsSplitButtons = supportsSplitButtons
+		this.#supportsHapticFeedback = supportsHapticFeedback
 
-		this.#deck.on('error', (e) => context.disconnect(e))
+		this.#deck.on('error', (e) => {
+			this.#isClosed = true
+			this.#hapticFeedbackReady = false
+			context.disconnect(e)
+		})
 
 		this.#deck.on('down', (control) => {
 			context.keyDownById(control.id)
@@ -176,6 +202,8 @@ export class LoupedeckWrapper implements SurfaceInstance {
 		await this.blank()
 	}
 	async close(): Promise<void> {
+		this.#isClosed = true
+		this.#hapticFeedbackReady = false
 		await this.#deck.blankDevice(true, true).catch(() => null)
 
 		await this.#deck.close()
@@ -186,6 +214,11 @@ export class LoupedeckWrapper implements SurfaceInstance {
 
 		this.#invertFaderValues = !!config.invertFaderValues
 		this.#configStripMode = config.lcdStripMode === 'slider' ? 'slider' : 'buttons'
+		this.#hapticFeedbackEnabled = config[HapticFeedbackConfigId] !== false
+		const intensity = config[HapticFeedbackIntensityConfigId]
+		this.#hapticFeedbackIntensity = Object.hasOwn(HapticFeedbackIntensityDelays, intensity)
+			? (intensity as HapticFeedbackIntensity)
+			: DefaultHapticFeedbackIntensity
 
 		const nextEffectiveMode = this.#effectiveStripMode
 
@@ -204,7 +237,47 @@ export class LoupedeckWrapper implements SurfaceInstance {
 		// Not used
 	}
 
-	async ready(): Promise<void> {}
+	async ready(): Promise<void> {
+		if (this.#isClosed) return
+		this.#hapticFeedbackReady = true
+	}
+
+	/**
+	 * Submit one short haptic request when Companion explicitly asks for it.
+	 *
+	 * The click patterns end with a brake, so they stop instead of coasting like the
+	 * buzz patterns, but played in full they are loud. Interrupting the click a few
+	 * milliseconds in with a pattern too weak to feel keeps it crisp and quiet.
+	 * Selected by feel on a Loupedeck Live S; other models are unqualified.
+	 */
+	async triggerHapticFeedback(): Promise<void> {
+		if (!this.#supportsHapticFeedback || !this.#hapticFeedbackEnabled || !this.#hapticFeedbackReady || this.#isClosed) {
+			return
+		}
+		if (this.#hapticFeedbackInFlight) {
+			if (!this.#hapticFeedbackBusyLogged) {
+				this.#hapticFeedbackBusyLogged = true
+				this.#logger.debug('Dropping haptic feedback request while another request is in flight')
+			}
+			return
+		}
+
+		this.#hapticFeedbackInFlight = true
+		try {
+			await this.#deck.vibrate(LoupedeckVibratePattern.SHARP_CLICK_MEDIUM, {
+				bestEffort: true,
+				interrupt: {
+					afterMs: HapticFeedbackIntensityDelays[this.#hapticFeedbackIntensity],
+					pattern: LoupedeckVibratePattern.SHARP_CLICK_LOW,
+				},
+			})
+		} catch (e) {
+			this.#logger.warn(`Haptic feedback failed: ${e}`)
+		} finally {
+			this.#hapticFeedbackInFlight = false
+			this.#hapticFeedbackBusyLogged = false
+		}
+	}
 
 	async setBrightness(percent: number): Promise<void> {
 		await this.#deck.setBrightness(percent / 100)

@@ -12,6 +12,12 @@ If you are having issues, make sure your firmware is up to date. We require the 
 
 The layout closely matches the natural grid layout of each device.
 
+### Haptic feedback
+
+Supported motor-capable surfaces enable haptic feedback by default. Clear **Enable haptic feedback** in a surface's settings to turn it off only for that surface. **Haptic feedback intensity** chooses a lighter or stronger click; the feel was tuned on a Loupedeck Live S and may differ on other models. The adapter never vibrates directly from raw touches, key presses, redraws, or startup. With the required Companion and surface API support, physical input that dispatches an eligible action can lead Companion to request feedback automatically; the action group's setting still applies. Companion can also request feedback through an explicit callback, and the same per-surface setting applies to both.
+
+The haptic direction was informed by [ninoleto's split-strips v1.2.0](https://github.com/ninoleto/companion-surface-loupedeck-split-strips/tree/v1.2.0), adapted here to use Companion-requested callbacks instead of touch-start feedback.
+
 ![Loupedeck Live template](images/loupedeck-live.png?raw=true 'Loupedeck Live template')
 
 [Loupedeck Live template](assets/loupedeck-live-template.companionconfig)
