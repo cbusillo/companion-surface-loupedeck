@@ -20,6 +20,7 @@ import {
 	DefaultHapticFeedbackIntensity,
 	HapticFeedbackConfigId,
 	HapticFeedbackIntensityConfigId,
+	HapticFeedbackHoldExtraMs,
 	HapticFeedbackIntensityDelays,
 	type HapticFeedbackIntensity,
 } from './config-fields.js'
@@ -245,13 +246,14 @@ export class LoupedeckWrapper implements SurfaceInstance {
 
 	/**
 	 * Companion reports that a press ran actions, or a run-while-held group fired.
-	 * The motor is shared by the whole device, so the control id is ignored and both
-	 * events play the same short click. Unknown events are ignored.
+	 * The motor is shared by the whole device, so the control id is ignored. A hold plays a
+	 * slightly longer click than a press, because the finger resting on the key damps it.
+	 * Unknown events are ignored.
 	 */
 	async controlEvent(_controlId: string, event: SurfaceControlEvent): Promise<void> {
 		if (event !== 'press' && event !== 'hold') return
 
-		await this.#triggerHapticFeedback()
+		await this.#triggerHapticFeedback(event === 'hold' ? HapticFeedbackHoldExtraMs : 0)
 	}
 
 	/**
@@ -262,7 +264,7 @@ export class LoupedeckWrapper implements SurfaceInstance {
 	 * milliseconds in with a pattern too weak to feel keeps it crisp and quiet.
 	 * Selected by feel on a Loupedeck Live S; other models are unqualified.
 	 */
-	async #triggerHapticFeedback(): Promise<void> {
+	async #triggerHapticFeedback(extraMs: number): Promise<void> {
 		if (!this.#supportsHapticFeedback || !this.#hapticFeedbackEnabled || !this.#hapticFeedbackReady || this.#isClosed) {
 			return
 		}
@@ -279,7 +281,7 @@ export class LoupedeckWrapper implements SurfaceInstance {
 			await this.#deck.vibrate(LoupedeckVibratePattern.SHARP_CLICK_MEDIUM, {
 				bestEffort: true,
 				interrupt: {
-					afterMs: HapticFeedbackIntensityDelays[this.#hapticFeedbackIntensity],
+					afterMs: HapticFeedbackIntensityDelays[this.#hapticFeedbackIntensity] + extraMs,
 					pattern: LoupedeckVibratePattern.SHARP_CLICK_LOW,
 				},
 			})

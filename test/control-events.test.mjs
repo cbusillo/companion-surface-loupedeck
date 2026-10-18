@@ -147,12 +147,29 @@ test('an error before or during init permanently disables haptics for that insta
 	assert.equal(duringInit.deck.vibrateCalls.length, 0)
 })
 
-test('press and hold on any control play the same click, and unknown events are ignored', async () => {
+test('press and hold on any control click, and unknown events are ignored', async () => {
 	const { deck, wrapper } = createWrapper()
 	await wrapper.ready()
 
 	await wrapper.controlEvent('0/0', 'press')
 	await wrapper.controlEvent('2/3', 'hold')
 	await wrapper.controlEvent('0/0', 'flash')
-	assert.deepEqual(deck.vibrateCalls, [pulse(5), pulse(5)])
+	assert.equal(deck.vibrateCalls.length, 2)
+	assert.deepEqual(deck.vibrateCalls[0], pulse(5))
+})
+
+test('a hold plays the same click cut later than a press, at every intensity', async () => {
+	const { deck, wrapper } = createWrapper()
+	await wrapper.ready()
+
+	for (const intensity of ['light', 'medium', 'strong']) {
+		await wrapper.updateConfig({ hapticFeedbackIntensity: intensity })
+		deck.vibrateCalls = []
+		await wrapper.controlEvent('0/0', 'press')
+		await wrapper.controlEvent('0/0', 'hold')
+		const [press, hold] = deck.vibrateCalls
+		assert.equal(hold.pattern, press.pattern)
+		assert.equal(hold.options.interrupt.pattern, press.options.interrupt.pattern)
+		assert.ok(hold.options.interrupt.afterMs > press.options.interrupt.afterMs, intensity)
+	}
 })

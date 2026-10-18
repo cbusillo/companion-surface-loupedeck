@@ -11,6 +11,13 @@ export const HapticFeedbackIntensityDelays = { light: 3, medium: 5, strong: 8 } 
 export type HapticFeedbackIntensity = keyof typeof HapticFeedbackIntensityDelays
 export const DefaultHapticFeedbackIntensity: HapticFeedbackIntensity = 'medium'
 
+/**
+ * Extra milliseconds before a hold's click is cut short. A finger already resting on the key
+ * damps the click when a hold fires, so it needs more than a tap. Selected by feel at Medium
+ * on a Loupedeck Live S.
+ */
+export const HapticFeedbackHoldExtraMs = 3
+
 /** Build the master haptic setting independently of optional touch-strip support. */
 export function buildHapticFeedbackConfigFields(supported: boolean): SomeCompanionInputField[] {
 	if (!supported) return []
