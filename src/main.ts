@@ -75,7 +75,7 @@ const StreamDeckPlugin: SurfacePlugin<LoupedeckDeviceInfo> = {
 			),
 			registerProps: {
 				brightness: true,
-				...(hapticFeedbackSupported ? { hapticFeedback: true } : {}),
+				...(hapticFeedbackSupported ? { controlEvents: true } : {}),
 				surfaceLayout: createSurfaceSchema(context.capabilities, loupedeck),
 				pincodeMap: generatePincodeMap(loupedeck.modelId),
 				configFields: configFields.length > 0 ? configFields : null,

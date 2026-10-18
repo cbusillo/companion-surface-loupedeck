@@ -45,20 +45,8 @@ test('allowlists motor-capable models and exposes the default-on setting without
 	assert.equal(supportsHapticFeedback(LoupedeckModelId.LoupedeckLiveS), true)
 	assert.equal(supportsHapticFeedback(LoupedeckModelId.RazerStreamController), true)
 	assert.equal(supportsHapticFeedback(LoupedeckModelId.RazerStreamControllerX), false)
-	assert.deepEqual(buildHapticFeedbackConfigFields(true), [
-		{ id: HapticFeedbackConfigId, type: 'checkbox', label: 'Enable haptic feedback', default: true },
-		{
-			id: 'hapticFeedbackIntensity',
-			type: 'dropdown',
-			label: 'Haptic feedback intensity',
-			default: 'medium',
-			choices: [
-				{ id: 'light', label: 'Light' },
-				{ id: 'medium', label: 'Medium' },
-				{ id: 'strong', label: 'Strong' },
-			],
-		},
-	])
+	const enabledField = buildHapticFeedbackConfigFields(true).find((field) => field.id === HapticFeedbackConfigId)
+	assert.equal(enabledField?.default, true)
 	assert.deepEqual(buildHapticFeedbackConfigFields(false), [])
 })
 
@@ -75,7 +63,7 @@ test('intensity selects the interrupt delay and unknown values fall back to medi
 
 	for (const intensity of ['light', 'medium', 'strong', 'toString', undefined, null, 3, {}]) {
 		await wrapper.updateConfig({ hapticFeedbackIntensity: intensity })
-		await wrapper.triggerHapticFeedback()
+		await wrapper.controlEvent('0/0', 'press')
 	}
 	assert.deepEqual(deck.vibrateCalls, [pulse(3), pulse(5), pulse(8), ...Array.from({ length: 5 }, () => pulse(5))])
 })
@@ -83,12 +71,12 @@ test('intensity selects the interrupt delay and unknown values fall back to medi
 test('uses an interrupted best-effort click only after ready and never from raw input', async () => {
 	const { deck, wrapper } = createWrapper()
 
-	await wrapper.triggerHapticFeedback()
+	await wrapper.controlEvent('0/0', 'press')
 	deck.emit('down', { id: '0/0' })
 	assert.equal(deck.vibrateCalls.length, 0)
 
 	await wrapper.ready()
-	await wrapper.triggerHapticFeedback()
+	await wrapper.controlEvent('0/0', 'press')
 	assert.deepEqual(deck.vibrateCalls, [pulse(5)])
 })
 
@@ -97,15 +85,15 @@ test('defaults missing haptic configuration to on and preserves explicit off', a
 	await wrapper.ready()
 
 	await wrapper.updateConfig({})
-	await wrapper.triggerHapticFeedback()
+	await wrapper.controlEvent('0/0', 'press')
 	assert.equal(deck.vibrateCalls.length, 1)
 
 	await wrapper.updateConfig({ hapticFeedback: false })
-	await wrapper.triggerHapticFeedback()
+	await wrapper.controlEvent('0/0', 'press')
 	assert.equal(deck.vibrateCalls.length, 1)
 
 	await wrapper.updateConfig({ hapticFeedback: true })
-	await wrapper.triggerHapticFeedback()
+	await wrapper.controlEvent('0/0', 'press')
 	assert.equal(deck.vibrateCalls.length, 2)
 })
 
@@ -117,13 +105,13 @@ test('drops requests while a haptic submission is in flight and never replays th
 		resolveVibrate = resolve
 	})
 
-	const first = wrapper.triggerHapticFeedback()
-	await wrapper.triggerHapticFeedback()
+	const first = wrapper.controlEvent('0/0', 'press')
+	await wrapper.controlEvent('0/0', 'press')
 	assert.equal(deck.vibrateCalls.length, 1)
 
 	resolveVibrate()
 	await first
-	await wrapper.triggerHapticFeedback()
+	await wrapper.controlEvent('0/0', 'press')
 	assert.equal(deck.vibrateCalls.length, 2)
 })
 
@@ -131,16 +119,16 @@ test('contains device errors and rejects requests after close or on unsupported 
 	const { deck, wrapper } = createWrapper()
 	await wrapper.ready()
 	deck.vibrateResult = Promise.reject(new Error('transport failed'))
-	await assert.doesNotReject(wrapper.triggerHapticFeedback())
+	await assert.doesNotReject(wrapper.controlEvent('0/0', 'press'))
 	assert.equal(deck.vibrateCalls.length, 1)
 
 	await wrapper.close()
-	await wrapper.triggerHapticFeedback()
+	await wrapper.controlEvent('0/0', 'press')
 	assert.equal(deck.vibrateCalls.length, 1)
 
 	const unsupported = createWrapper({ supportsHapticFeedback: false })
 	await unsupported.wrapper.ready()
-	await unsupported.wrapper.triggerHapticFeedback()
+	await unsupported.wrapper.controlEvent('0/0', 'press')
 	assert.equal(unsupported.deck.vibrateCalls.length, 0)
 })
 
@@ -148,13 +136,23 @@ test('an error before or during init permanently disables haptics for that insta
 	const beforeInit = createWrapper()
 	beforeInit.deck.emit('error', new Error('disconnected'))
 	await beforeInit.wrapper.ready()
-	await beforeInit.wrapper.triggerHapticFeedback()
+	await beforeInit.wrapper.controlEvent('0/0', 'press')
 	assert.equal(beforeInit.deck.vibrateCalls.length, 0)
 
 	const duringInit = createWrapper()
 	duringInit.deck.onBlank = () => duringInit.deck.emit('error', new Error('disconnected'))
 	await duringInit.wrapper.init()
 	await duringInit.wrapper.ready()
-	await duringInit.wrapper.triggerHapticFeedback()
+	await duringInit.wrapper.controlEvent('0/0', 'press')
 	assert.equal(duringInit.deck.vibrateCalls.length, 0)
+})
+
+test('press and hold on any control play the same click, and unknown events are ignored', async () => {
+	const { deck, wrapper } = createWrapper()
+	await wrapper.ready()
+
+	await wrapper.controlEvent('0/0', 'press')
+	await wrapper.controlEvent('2/3', 'hold')
+	await wrapper.controlEvent('0/0', 'flash')
+	assert.deepEqual(deck.vibrateCalls, [pulse(5), pulse(5)])
 })

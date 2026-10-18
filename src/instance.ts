@@ -7,6 +7,7 @@ import {
 	parseColor,
 	ModuleLogger,
 	createModuleLogger,
+	type SurfaceControlEvent,
 } from '@companion-surface/base'
 import {
 	LoupedeckBufferFormat,
@@ -243,14 +244,25 @@ export class LoupedeckWrapper implements SurfaceInstance {
 	}
 
 	/**
-	 * Submit one short haptic request when Companion explicitly asks for it.
+	 * Companion reports that a press ran actions, or a run-while-held group fired.
+	 * The motor is shared by the whole device, so the control id is ignored and both
+	 * events play the same short click. Unknown events are ignored.
+	 */
+	async controlEvent(_controlId: string, event: SurfaceControlEvent): Promise<void> {
+		if (event !== 'press' && event !== 'hold') return
+
+		await this.#triggerHapticFeedback()
+	}
+
+	/**
+	 * Play one short haptic click, when enabled and not already playing one.
 	 *
 	 * The click patterns end with a brake, so they stop instead of coasting like the
 	 * buzz patterns, but played in full they are loud. Interrupting the click a few
 	 * milliseconds in with a pattern too weak to feel keeps it crisp and quiet.
 	 * Selected by feel on a Loupedeck Live S; other models are unqualified.
 	 */
-	async triggerHapticFeedback(): Promise<void> {
+	async #triggerHapticFeedback(): Promise<void> {
 		if (!this.#supportsHapticFeedback || !this.#hapticFeedbackEnabled || !this.#hapticFeedbackReady || this.#isClosed) {
 			return
 		}
