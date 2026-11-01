@@ -1,6 +1,6 @@
 {
 	"name": "companion-surface-loupedeck",
-	"version": "1.1.1",
+	"version": "1.1.1-haptics.1",
 	"main": "dist/main.js",
 	"type": "module",
 	"scripts": {
@@ -26,7 +26,7 @@
 	},
 	"dependencies": {
 		"@companion-surface/base": "~1.3.0",
-		"@loupedeck/node": "^2.2.2"
+		"@loupedeck/node": "patch:@loupedeck/node@npm%3A2.2.2#~/.yarn/patches/@loupedeck-node-npm-2.2.2-95af3d9011.patch"
 	},
 	"devDependencies": {
 		"@companion-module/tools": "^3.1.0",
@@ -48,5 +48,8 @@
 			"yarn lint:raw --fix"
 		]
 	},
-	"packageManager": "yarn@4.14.1"
+	"packageManager": "yarn@4.14.1",
+	"resolutions": {
+		"@loupedeck/core@npm:2.2.2": "patch:@loupedeck/core@npm%3A2.2.2#~/.yarn/patches/@loupedeck-core-npm-2.2.2-a5673b257f.patch"
+	}
 }

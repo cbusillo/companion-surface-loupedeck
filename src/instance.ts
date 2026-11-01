@@ -7,7 +7,6 @@ import {
 	parseColor,
 	ModuleLogger,
 	createModuleLogger,
-	type SurfaceControlEvent,
 } from '@companion-surface/base'
 import {
 	LoupedeckBufferFormat,
@@ -18,10 +17,15 @@ import {
 } from '@loupedeck/node'
 import {
 	DefaultHapticFeedbackIntensity,
+	DefaultHapticHoldDelayMs,
 	HapticFeedbackConfigId,
 	HapticFeedbackIntensityConfigId,
 	HapticFeedbackHoldExtraMs,
 	HapticFeedbackIntensityDelays,
+	HapticHoldClickConfigId,
+	HapticHoldDelayConfigId,
+	MaxHapticHoldDelayMs,
+	MinHapticHoldDelayMs,
 	type HapticFeedbackIntensity,
 } from './config-fields.js'
 import {
@@ -61,6 +65,10 @@ export class LoupedeckWrapper implements SurfaceInstance {
 	#hapticFeedbackReady = false
 	#hapticFeedbackInFlight = false
 	#hapticFeedbackBusyLogged = false
+	#hapticHoldClickEnabled = true
+	#hapticHoldDelayMs = DefaultHapticHoldDelayMs
+	/** Pending hold clicks per pressed control id, cancelled when that control is released */
+	readonly #hapticHoldTimers = new Map<string, ReturnType<typeof setTimeout>>()
 	#isClosed = false
 
 	/** Configured strip mode. Only meaningful when #supportsSplitButtons is true */
@@ -120,14 +128,24 @@ export class LoupedeckWrapper implements SurfaceInstance {
 		this.#deck.on('error', (e) => {
 			this.#isClosed = true
 			this.#hapticFeedbackReady = false
+			this.#cancelHapticHoldClicks()
 			context.disconnect(e)
 		})
 
+		const pressDown = (controlId: string): void => {
+			context.keyDownById(controlId)
+			this.#physicalPress(controlId)
+		}
+		const pressUp = (controlId: string): void => {
+			this.#cancelHapticHoldClick(controlId)
+			context.keyUpById(controlId)
+		}
+
 		this.#deck.on('down', (control) => {
-			context.keyDownById(control.id)
+			pressDown(control.id)
 		})
 		this.#deck.on('up', (control) => {
-			context.keyUpById(control.id)
+			pressUp(control.id)
 		})
 		this.#deck.on('rotate', (control, delta) => {
 			if (delta < 0) {
@@ -139,16 +157,16 @@ export class LoupedeckWrapper implements SurfaceInstance {
 		this.#deck.on('touchstart', (data) => {
 			for (const touch of data.changedTouches) {
 				if (touch.target.control !== undefined && touch.target.screen === LoupedeckDisplayId.Center) {
-					context.keyDownById(touch.target.control.id)
+					pressDown(touch.target.control.id)
 				} else if (touch.target.screen == LoupedeckDisplayId.Wheel) {
 					const wheelControl = this.#deck.controls.find((c) => c.type === 'wheel')
-					if (wheelControl) context.keyDownById(wheelControl.id)
+					if (wheelControl) pressDown(wheelControl.id)
 				} else if (this.#effectiveStripMode === 'buttons') {
 					const stripId = stripIdFromScreen(touch.target.screen)
 					const controlId = stripId && this.#stripCellControlIdForTouch(stripId, touch.y)
 					if (controlId) {
 						this.#pressedStripCells.set(touch.id, controlId)
-						context.keyDownById(controlId)
+						pressDown(controlId)
 					}
 				}
 			}
@@ -156,16 +174,16 @@ export class LoupedeckWrapper implements SurfaceInstance {
 		this.#deck.on('touchend', (data) => {
 			for (const touch of data.changedTouches) {
 				if (touch.target.control !== undefined && touch.target.screen === LoupedeckDisplayId.Center) {
-					context.keyUpById(touch.target.control.id)
+					pressUp(touch.target.control.id)
 				} else if (touch.target.screen == LoupedeckDisplayId.Wheel) {
 					const wheelControl = this.#deck.controls.find((c) => c.type === 'wheel')
-					if (wheelControl) context.keyUpById(wheelControl.id)
+					if (wheelControl) pressUp(wheelControl.id)
 				} else {
 					// Release whichever strip cell this touch pressed (if any), regardless of current mode
 					const pressedId = this.#pressedStripCells.get(touch.id)
 					if (pressedId !== undefined) {
 						this.#pressedStripCells.delete(touch.id)
-						context.keyUpById(pressedId)
+						pressUp(pressedId)
 					}
 				}
 			}
@@ -206,6 +224,7 @@ export class LoupedeckWrapper implements SurfaceInstance {
 	async close(): Promise<void> {
 		this.#isClosed = true
 		this.#hapticFeedbackReady = false
+		this.#cancelHapticHoldClicks()
 		await this.#deck.blankDevice(true, true).catch(() => null)
 
 		await this.#deck.close()
@@ -221,6 +240,13 @@ export class LoupedeckWrapper implements SurfaceInstance {
 		this.#hapticFeedbackIntensity = Object.hasOwn(HapticFeedbackIntensityDelays, intensity)
 			? (intensity as HapticFeedbackIntensity)
 			: DefaultHapticFeedbackIntensity
+		this.#hapticHoldClickEnabled = config[HapticHoldClickConfigId] !== false
+		const holdDelay = Number(config[HapticHoldDelayConfigId])
+		this.#hapticHoldDelayMs =
+			Number.isFinite(holdDelay) && holdDelay >= MinHapticHoldDelayMs && holdDelay <= MaxHapticHoldDelayMs
+				? holdDelay
+				: DefaultHapticHoldDelayMs
+		if (!this.#hapticFeedbackEnabled || !this.#hapticHoldClickEnabled) this.#cancelHapticHoldClicks()
 
 		const nextEffectiveMode = this.#effectiveStripMode
 
@@ -245,15 +271,34 @@ export class LoupedeckWrapper implements SurfaceInstance {
 	}
 
 	/**
-	 * Companion reports that a press ran actions, or a run-while-held group fired.
-	 * The motor is shared by the whole device, so the control id is ignored. A hold plays a
-	 * slightly longer click than a press, because the finger resting on the key damps it.
-	 * Unknown events are ignored.
+	 * Click on every physical key or touch press, then click again if the control is still held
+	 * after the hold delay. The surface cannot see whether Companion runs any actions, so the hold
+	 * click is time-based; a slightly longer click covers the finger resting on the key.
 	 */
-	async controlEvent(_controlId: string, event: SurfaceControlEvent): Promise<void> {
-		if (event !== 'press' && event !== 'hold') return
+	#physicalPress(controlId: string): void {
+		void this.#triggerHapticFeedback(0)
 
-		await this.#triggerHapticFeedback(event === 'hold' ? HapticFeedbackHoldExtraMs : 0)
+		this.#cancelHapticHoldClick(controlId)
+		if (!this.#hapticHoldClickEnabled || !this.#hapticFeedbackEnabled || !this.#supportsHapticFeedback) return
+		this.#hapticHoldTimers.set(
+			controlId,
+			setTimeout(() => {
+				this.#hapticHoldTimers.delete(controlId)
+				void this.#triggerHapticFeedback(HapticFeedbackHoldExtraMs)
+			}, this.#hapticHoldDelayMs),
+		)
+	}
+
+	#cancelHapticHoldClick(controlId: string): void {
+		const timer = this.#hapticHoldTimers.get(controlId)
+		if (timer === undefined) return
+		clearTimeout(timer)
+		this.#hapticHoldTimers.delete(controlId)
+	}
+
+	#cancelHapticHoldClicks(): void {
+		for (const timer of this.#hapticHoldTimers.values()) clearTimeout(timer)
+		this.#hapticHoldTimers.clear()
 	}
 
 	/**

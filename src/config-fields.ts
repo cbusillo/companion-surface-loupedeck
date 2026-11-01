@@ -13,10 +13,16 @@ export const DefaultHapticFeedbackIntensity: HapticFeedbackIntensity = 'medium'
 
 /**
  * Extra milliseconds before a hold's click is cut short. A finger already resting on the key
- * damps the click when a hold fires, so it needs more than a tap. Selected by feel at Medium
- * on a Loupedeck Live S.
+ * damps the hold click, so it needs more than a tap. Selected by feel at Medium on a
+ * Loupedeck Live S.
  */
 export const HapticFeedbackHoldExtraMs = 3
+
+export const HapticHoldClickConfigId = 'hapticHoldClick'
+export const HapticHoldDelayConfigId = 'hapticHoldDelayMs'
+export const DefaultHapticHoldDelayMs = 1000
+export const MinHapticHoldDelayMs = 100
+export const MaxHapticHoldDelayMs = 10000
 
 /** Build the master haptic setting independently of optional touch-strip support. */
 export function buildHapticFeedbackConfigFields(supported: boolean): SomeCompanionInputField[] {
@@ -39,6 +45,20 @@ export function buildHapticFeedbackConfigFields(supported: boolean): SomeCompani
 				{ id: 'medium', label: 'Medium' },
 				{ id: 'strong', label: 'Strong' },
 			],
+		},
+		{
+			id: HapticHoldClickConfigId,
+			type: 'checkbox',
+			label: 'Click again while a key is held',
+			default: true,
+		},
+		{
+			id: HapticHoldDelayConfigId,
+			type: 'number',
+			label: 'Hold click after (ms)',
+			default: DefaultHapticHoldDelayMs,
+			min: MinHapticHoldDelayMs,
+			max: MaxHapticHoldDelayMs,
 		},
 	]
 }

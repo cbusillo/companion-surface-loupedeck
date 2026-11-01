@@ -14,9 +14,9 @@ The layout closely matches the natural grid layout of each device.
 
 ### Haptic feedback
 
-Supported motor-capable surfaces enable haptic feedback by default. Clear **Enable haptic feedback** in a surface's settings to turn it off only for that surface. **Haptic feedback intensity** chooses a lighter or stronger click; the feel was tuned on a Loupedeck Live S and may differ on other models. The adapter never vibrates directly from raw touches, key presses, redraws, or startup. It clicks when Companion reports that a press ran actions or a run-while-held group fired; a hold's click runs slightly longer, because the finger resting on the key damps it. Turn off **Surface cue** on an action group to stop its click. The same per-surface setting applies to every click.
+Supported motor-capable surfaces enable haptic feedback by default. Clear **Enable haptic feedback** in a surface's settings to turn it off only for that surface. **Haptic feedback intensity** chooses a lighter or stronger click; the feel was tuned on a Loupedeck Live S and may differ on other models. The surface clicks on each key or touch press. With **Click again while a key is held** on, it clicks again once a key has been held for **Hold click after (ms)**, 1000 by default; match it to your run-while-held buttons' hold time. The hold click is time-based, so any key held that long clicks.
 
-The haptic direction was informed by [ninoleto's split-strips v1.2.0](https://github.com/ninoleto/companion-surface-loupedeck-split-strips/tree/v1.2.0), adapted here to use Companion control events instead of touch-start feedback.
+The haptic direction was informed by [ninoleto's split-strips v1.2.0](https://github.com/ninoleto/companion-surface-loupedeck-split-strips/tree/v1.2.0).
 
 ![Loupedeck Live template](images/loupedeck-live.png?raw=true 'Loupedeck Live template')
 
