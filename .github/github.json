@@ -1,0 +1,8 @@
+{
+	"qualityGate": {
+		"inspection": {
+			"ide": "WebStorm",
+			"scopePreference": "changed_files"
+		}
+	}
+}
