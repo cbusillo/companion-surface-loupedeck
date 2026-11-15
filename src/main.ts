@@ -25,6 +25,10 @@ const StreamDeckPlugin: SurfacePlugin<LoupedeckDeviceInfo> = {
 	destroy: async (): Promise<void> => {
 		// Nothing to do
 	},
+	getSurfaceModels: async () => {
+		// Models are not declared ahead of time yet; each surface reports its own layout when it connects
+		return []
+	},
 
 	scanForSurfaces: async (): Promise<DetectionSurfaceInfo<LoupedeckDeviceInfo>[]> => {
 		const surfaceInfos = await listLoupedecks()
@@ -75,8 +79,10 @@ const StreamDeckPlugin: SurfacePlugin<LoupedeckDeviceInfo> = {
 			),
 			registerProps: {
 				brightness: true,
-				...(hapticFeedbackSupported ? { controlEvents: true } : {}),
+				...(hapticFeedbackSupported ? { controlEvents: ['press', 'hold'] } : {}),
 				surfaceLayout: createSurfaceSchema(context.capabilities, loupedeck),
+				surfaceAppearance: null,
+				modelId: null,
 				pincodeMap: generatePincodeMap(loupedeck.modelId),
 				configFields: configFields.length > 0 ? configFields : null,
 				transferVariables: useTouchStrips
